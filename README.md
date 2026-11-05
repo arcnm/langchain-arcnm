@@ -64,12 +64,13 @@ it; set `handle_tool_error=False` to have it raised instead.
 
 | Tool | What it does | Uses a calculation |
 |---|---|---|
+| `precheck_part` | Before pricing a STEP file: one part or an assembly, its bill of materials, and how many calculations pricing it uses. Starts nothing. | No |
 | `upload_and_quote` | Uploads a CAD file, and a drawing if you have one, and prices it. | Yes |
 | `quote_part` | Prices a part revision ARCNM already has, at another lot size or in another costing environment. | Yes |
 | `cancel_calculation` | Stops a calculation that is still queued or running. | No |
 | `get_calculation` | Reads one calculation: status, costs, cycle time, confidence. `wait=true` waits for it to finish. | No |
 | `list_calculations` | Lists recent calculations, by status or part. | No |
-| `get_cost_sheet` | The itemised cost sheet, at the priced lot size or any other. | No |
+| `get_cost_sheet` | The itemised cost sheet, at the priced lot size or any other: each line's amount per unit, time and rate. | No |
 | `list_parts` | Finds parts by part number. | No |
 | `list_part_revisions` | Lists a part's revisions, for `quote_part`. | No |
 | `list_environments` | Lists the costing environments (machines, rates, materials) a calculation can price with. | No |
@@ -92,16 +93,16 @@ Pass these to `ArcnmToolkit` or to any single tool.
 | `api_key` | `ARCNM_API_KEY` | Your ARCNM API key. |
 | `base_url` | `ARCNM_BASE_URL`, else `https://api.arcnm.io` | Change it only when you were given a different origin. |
 | `org_slug` | `ARCNM_ORG_SLUG` | The organization to act in, for a key that belongs to several. |
-| `root_dir` | none | The directory `upload_and_quote` may read files from. |
-| `read_only` | `False` | Toolkit only. Leaves out the tools that start or stop a calculation. |
+| `root_dir` | none | The directory `upload_and_quote` and `precheck_part` may read files from. |
+| `read_only` | `False` | Toolkit only. Leaves out the tools that store a file or start or stop a calculation. |
 | `wait_timeout` | `120` | Seconds to wait for a started calculation. `0` returns at once. |
 | `poll_interval` | `2` | Seconds between status checks while waiting. |
 | `request_timeout` | `60` | Seconds one HTTP request may take. |
 
 ## Security
 
-`upload_and_quote` reads the file path the model gives it and sends that file
-to ARCNM. Set `root_dir` so it can only read the folder you meant, and use
+`upload_and_quote` and `precheck_part` read the file path the model gives them
+and send that file to ARCNM. Set `root_dir` so it can only read the folder you meant, and use
 `read_only=True` for an agent that should never start a calculation. A key with
 only `parts:read` cannot start one either.
 

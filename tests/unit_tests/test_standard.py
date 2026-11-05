@@ -16,6 +16,7 @@ from langchain_arcnm import (
     ListEnvironmentsTool,
     ListPartRevisionsTool,
     ListPartsTool,
+    PrecheckPartTool,
     QuotePartTool,
     UploadAndQuoteTool,
 )
@@ -51,6 +52,11 @@ class _Base(ToolsUnitTests):
 class TestUploadAndQuote(_Base):
     tool_class = UploadAndQuoteTool
     example = {"file_path": "bracket.step", "lot_size": 50}
+
+
+class TestPrecheckPart(_Base):
+    tool_class = PrecheckPartTool
+    example = {"file_path": "gearbox.step", "part_number": "GB-100"}
 
 
 class TestQuotePart(_Base):

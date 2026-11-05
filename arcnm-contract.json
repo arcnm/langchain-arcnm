@@ -40,7 +40,18 @@
       "query": ["status_filter", "part_id", "limit"],
       "response": {"fields": ["items", "has_more"]}
     },
-    {"method": "GET", "path": "/api/v1/calculations/{calculation_id}/cost-sheet", "query": ["quantity"]},
+    {"method": "GET", "path": "/api/v1/calculations/{calculation_id}/cost-sheet", "query": ["quantity"], "response": {"fields": ["basis", "cost_sheet", "point", "rebuilt"]}},
+    {
+      "method": "POST",
+      "path": "/api/v1/prechecks",
+      "request": {
+        "content_type": "multipart/form-data",
+        "required": ["cad_file"],
+        "fields": ["part_number", "drawing_files"]
+      },
+      "response": {"status": 202, "fields": ["id", "status", "kind", "error_code", "per_part", "totals", "quota", "rows", "expires_at"]}
+    },
+    {"method": "GET", "path": "/api/v1/prechecks/{precheck_id}", "response": {"fields": ["id", "status", "kind", "error_code", "per_part", "totals", "quota", "rows", "expires_at"]}},
     {"method": "POST", "path": "/api/v1/calculations/{calculation_id}/cancel"},
     {"method": "GET", "path": "/api/v1/calculations/entitlement", "response": {"fields": ["plan", "included", "used", "remaining", "over_quota", "window_end", "guidance"]}},
     {"method": "GET", "path": "/api/v1/environments/", "query": ["limit"]},

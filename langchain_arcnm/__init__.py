@@ -12,6 +12,7 @@ from langchain_arcnm.tools import (
     ListEnvironmentsTool,
     ListPartRevisionsTool,
     ListPartsTool,
+    PrecheckPartTool,
     QuotePartTool,
     UploadAndQuoteTool,
 )
@@ -29,6 +30,7 @@ __all__ = [
     "ListEnvironmentsTool",
     "ListPartRevisionsTool",
     "ListPartsTool",
+    "PrecheckPartTool",
     "QuotePartTool",
     "UploadAndQuoteTool",
 ]
