@@ -1,0 +1,56 @@
+# Publishes to PyPI when a version tag (v0.1.0) is pushed.
+#
+# Uses PyPI trusted publishing, so no token lives in this repository. One-time
+# setup on pypi.org: Your account, then Publishing, then Add a new pending
+# publisher, with
+#   PyPI project name:  langchain-arcnm
+#   Owner:              arcnm
+#   Repository name:    langchain-arcnm
+#   Workflow name:      publish.yml
+#   Environment name:   pypi
+#
+# Release: bump the version in pyproject.toml and langchain_arcnm/_client.py,
+# add a CHANGELOG entry, merge, then
+#   git tag v0.1.0 && git push origin v0.1.0
+
+name: Publish
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.13'
+      - name: Tag matches the package version
+        run: |
+          version=$(uv version --short)
+          [ "v$version" = "$GITHUB_REF_NAME" ] || { echo "tag $GITHUB_REF_NAME, package $version"; exit 1; }
+      - run: uv sync --all-groups
+      - run: make lint
+      - run: make test
+      - run: uv build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1

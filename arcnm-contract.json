@@ -1,0 +1,50 @@
+{
+  "$comment": "Every ARCNM operation this package calls, and the fields, query parameters and list keys it relies on. ARCNM checks this file against every change to its API before that change merges. Not part of the PyPI package.",
+  "operations": [
+    {
+      "method": "POST",
+      "path": "/api/v1/calculations/upload-and-quote",
+      "request": {
+        "content_type": "multipart/form-data",
+        "required": ["part_number", "cad_file"],
+        "fields": ["drawing_file", "lot_size", "annual_volume", "costing_environment_id"]
+      },
+      "response": {"status": 202, "fields": ["id", "status"]}
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/calculations/quote",
+      "request": {
+        "required": ["part_revision_id"],
+        "fields": ["lot_size", "annual_volume", "costing_environment_id"]
+      },
+      "response": {"status": 202, "fields": ["id", "status"]}
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/calculations/{calculation_id}",
+      "query": ["include_analytics"],
+      "response": {
+        "fields": [
+          "id", "status", "terminal", "part_id", "part_number", "part_revision_id",
+          "costing_environment_id", "lot_size", "annual_volume", "currency", "unit_cost",
+          "setup_cost", "total_cost", "offer_price", "unit_time_s", "total_time_s",
+          "confidence", "price_completeness", "needs_human_review", "review_reasons",
+          "coverage", "error", "created_at", "finished_at"
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/calculations",
+      "query": ["status_filter", "part_id", "limit"],
+      "response": {"fields": ["items", "has_more"]}
+    },
+    {"method": "GET", "path": "/api/v1/calculations/{calculation_id}/cost-sheet", "query": ["quantity"]},
+    {"method": "POST", "path": "/api/v1/calculations/{calculation_id}/cancel"},
+    {"method": "GET", "path": "/api/v1/calculations/entitlement", "response": {"fields": ["plan", "included", "used", "remaining", "over_quota", "window_end", "guidance"]}},
+    {"method": "GET", "path": "/api/v1/environments/", "query": ["limit"]},
+    {"method": "GET", "path": "/api/v1/parts/", "query": ["q", "limit"], "response": {"fields": ["data", "has_more"]}},
+    {"method": "GET", "path": "/api/v1/parts/{part_id}/revisions", "query": ["limit", "order"], "response": {"fields": ["data", "has_more"]}}
+  ]
+}
