@@ -19,6 +19,7 @@ from langchain_arcnm.tools import (
     ListEnvironmentsTool,
     ListPartRevisionsTool,
     ListPartsTool,
+    PrecheckPartTool,
     QuotePartTool,
     UploadAndQuoteTool,
 )
@@ -41,8 +42,9 @@ class ArcnmToolkit(BaseToolkit):
             toolkit = ArcnmToolkit()
             tools = toolkit.get_tools()
 
-    ``read_only=True`` leaves out the three tools that start or stop a
-    calculation, so an agent can read results but never use the plan.
+    ``read_only=True`` leaves out the four tools that store a file or start
+    or stop a calculation, so an agent can read results but never use the
+    plan. Those four need a key with ``parts:write``.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -74,6 +76,7 @@ class ArcnmToolkit(BaseToolkit):
         tools: list[BaseTool] = []
         if not self.read_only:
             tools += [
+                PrecheckPartTool(**common, root_dir=self.root_dir),
                 UploadAndQuoteTool(**waiting, root_dir=self.root_dir),
                 QuotePartTool(**waiting),
                 CancelCalculationTool(**common),

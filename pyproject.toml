@@ -1,6 +1,6 @@
 [project]
 name = "langchain-arcnm"
-version = "0.1.0"
+version = "0.1.1"
 description = "LangChain tools for ARCNM: manufacturing should-cost for machined and sheet-metal parts, from a CAD file."
 readme = "README.md"
 license = "MIT"

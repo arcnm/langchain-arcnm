@@ -10,7 +10,7 @@ import httpx
 
 DEFAULT_BASE_URL = "https://api.arcnm.io"
 API_PREFIX = "/api/v1"
-USER_AGENT = "langchain-arcnm/0.1.0"
+USER_AGENT = "langchain-arcnm/0.1.1"
 
 #: A calculation in one of these states will not change on its own. ``blocked``
 #: means it was created but parked because the plan has no calculations left.
@@ -119,13 +119,20 @@ class ArcnmClient:
         params: dict[str, Any] | None = None,
         json: dict[str, Any] | None = None,
         data: dict[str, Any] | None = None,
-        files: dict[str, tuple[str, IO[bytes]]] | None = None,
+        files: Any = None,
+        headers: dict[str, str] | None = None,
     ) -> Any:
         query = {k: v for k, v in (params or {}).items() if v is not None}
         form = {k: str(v) for k, v in (data or {}).items() if v is not None}
         try:
             response = self._http.request(
-                method, path, params=query, json=json, data=form or None, files=files
+                method,
+                path,
+                params=query,
+                json=json,
+                data=form or None,
+                files=files,
+                headers=headers,
             )
         except httpx.HTTPError as error:
             raise ArcnmAPIError(f"Could not reach ARCNM: {error}") from error
@@ -182,6 +189,48 @@ class ArcnmClient:
         return self.request(  # type: ignore[no-any-return]
             "POST", "/calculations/quote", json={k: v for k, v in body.items() if v is not None}
         )
+
+    def create_precheck(
+        self,
+        cad_path: Path,
+        *,
+        part_number: str | None = None,
+        drawing_path: Path | None = None,
+        wait_s: int = 5,
+    ) -> dict[str, Any]:
+        """Store the file and read it the way its calculation will. Free."""
+        with cad_path.open("rb") as cad:
+            files: list[tuple[str, tuple[str, IO[bytes]]]] = [("cad_file", (cad_path.name, cad))]
+            if drawing_path is None:
+                return self.request(  # type: ignore[no-any-return]
+                    "POST",
+                    "/prechecks",
+                    data={"part_number": part_number},
+                    files=files,
+                    headers={"Prefer": f"wait={wait_s}"},
+                )
+            with drawing_path.open("rb") as drawing:
+                files.append(("drawing_files", (drawing_path.name, drawing)))
+                return self.request(  # type: ignore[no-any-return]
+                    "POST",
+                    "/prechecks",
+                    data={"part_number": part_number},
+                    files=files,
+                    headers={"Prefer": f"wait={wait_s}"},
+                )
+
+    def get_precheck(self, precheck_id: str) -> dict[str, Any]:
+        return self.request("GET", f"/prechecks/{precheck_id}")  # type: ignore[no-any-return]
+
+    def wait_for_precheck(
+        self, precheck: dict[str, Any], *, timeout: float, poll_interval: float
+    ) -> dict[str, Any]:
+        """Poll while the precheck is still being read, up to ``timeout`` seconds."""
+        deadline = time.monotonic() + timeout
+        while precheck.get("status") == "received" and time.monotonic() < deadline:
+            time.sleep(min(poll_interval, max(0.0, deadline - time.monotonic())))
+            precheck = self.get_precheck(str(precheck["id"]))
+        return precheck
 
     def get_calculation(self, calculation_id: str) -> dict[str, Any]:
         return self.request(  # type: ignore[no-any-return]

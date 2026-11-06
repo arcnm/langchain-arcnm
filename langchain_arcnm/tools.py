@@ -56,6 +56,64 @@ def _calculation(record: dict[str, Any]) -> dict[str, Any]:
     return {key: record[key] for key in CALCULATION_FIELDS if record.get(key) is not None}
 
 
+#: What a cost-sheet line keeps: what it is, what it costs per unit, and the
+#: time and rate behind it. Message ids, formulas and evidence are for the
+#: ARCNM page, not for a model.
+LINE_FIELDS = ("bucket", "amount", "time_s", "time_basis", "rate", "label_params")
+RATE_FIELDS = ("value", "unit", "currency")
+POINT_FIELDS = (
+    "quantity",
+    "unit_cost",
+    "offer_price",
+    "setup_time_s",
+    "unit_time_s",
+    "machine_name_at_n",
+    "replan_recommended",
+    "replan_at_lot",
+)
+
+
+def _line(line: dict[str, Any]) -> dict[str, Any]:
+    out = {key: line[key] for key in LINE_FIELDS if line.get(key) not in (None, {}, [])}
+    if isinstance(out.get("rate"), dict):
+        out["rate"] = {k: out["rate"][k] for k in RATE_FIELDS if out["rate"].get(k) is not None}
+    children = [_line(child) for child in line.get("children") or []]
+    if children:
+        out["children"] = children
+    return out
+
+
+def _cost_sheet(response: dict[str, Any]) -> dict[str, Any]:
+    """The cost sheet without what only the ARCNM page needs; the figures
+    are unchanged."""
+    sheet = response.get("cost_sheet") or {}
+    point = response.get("point") or {}
+    out: dict[str, Any] = {
+        "basis": response.get("basis"),
+        "currency": sheet.get("currency"),
+        "lot_size": sheet.get("lot_size"),
+        "total": sheet.get("total"),
+        "reconciled": sheet.get("reconciled"),
+        "rebuilt": response.get("rebuilt"),
+        "point": {k: point[k] for k in POINT_FIELDS if point.get(k) is not None},
+        "lines": [_line(line) for line in sheet.get("lines") or []],
+        "notes": sheet.get("notes"),
+    }
+    return {k: v for k, v in out.items() if v not in (None, {}, [])}
+
+
+def _resolve(value: str, root_dir: str | None) -> Path:
+    path = Path(value).expanduser()
+    if root_dir is not None:
+        root = Path(root_dir).expanduser().resolve()
+        path = (root / path).resolve()
+        if not path.is_relative_to(root):
+            raise ValueError(f"{value} is outside the directory this tool may read.")
+    if not path.is_file():
+        raise ValueError(f"No such file: {value}")
+    return path
+
+
 def _dump(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"), default=str)
 
@@ -154,15 +212,7 @@ class UploadAndQuoteTool(_WaitingTool):
     """When set, file paths are read relative to this directory and may not leave it."""
 
     def _resolve(self, value: str) -> Path:
-        path = Path(value).expanduser()
-        if self.root_dir is not None:
-            root = Path(self.root_dir).expanduser().resolve()
-            path = (root / path).resolve()
-            if not path.is_relative_to(root):
-                raise ValueError(f"{value} is outside the directory this tool may read.")
-        if not path.is_file():
-            raise ValueError(f"No such file: {value}")
-        return path
+        return _resolve(value, self.root_dir)
 
     def _run(
         self,
@@ -186,6 +236,94 @@ class UploadAndQuoteTool(_WaitingTool):
                 costing_environment_id=costing_environment_id,
             )
             return self._settle(client, started)
+
+        return self._call(call)
+
+
+# -- precheck_part ------------------------------------------------------------
+
+#: What a bill-of-materials row keeps in a precheck answer.
+ROW_FIELDS = (
+    "position",
+    "label",
+    "part_number",
+    "qty_per",
+    "sourcing",
+    "fate",
+    "held_reason",
+)
+#: Rows shown before the answer says how many more there are.
+MAX_ROWS = 50
+
+
+def _precheck(record: dict[str, Any]) -> dict[str, Any]:
+    keep = ("id", "status", "kind", "error_code", "per_part", "totals", "quota", "expires_at")
+    out = {key: record[key] for key in keep if record.get(key) is not None}
+    rows = record.get("rows") or []
+    if rows:
+        out["rows"] = [
+            {k: row[k] for k in ROW_FIELDS if row.get(k) is not None} for row in rows[:MAX_ROWS]
+        ]
+        if len(rows) > MAX_ROWS:
+            out["rows_not_shown"] = len(rows) - MAX_ROWS
+    status = record.get("status")
+    if status == "received":
+        out["next_step"] = "Still being read. Call precheck_part again later, or price it anyway."
+    elif status in ("degraded", "failed"):
+        out["next_step"] = "No answer for this file; upload_and_quote still prices it."
+    return out
+
+
+class PrecheckPartInput(BaseModel):
+    file_path: str = Field(description="Path to the STEP file, for example gearbox.step.")
+    part_number: str | None = Field(
+        default=None, description="Part number it would be priced under."
+    )
+    drawing_path: str | None = Field(
+        default=None, description="Path to a drawing (PDF, PNG, JPEG) of the part or assembly."
+    )
+
+
+class PrecheckPartTool(ArcnmBaseTool):
+    """See what pricing a STEP file will do and use, before it starts. Free."""
+
+    name: str = "precheck_part"
+    description: str = (
+        "Before pricing a STEP file: whether it is one part or an assembly, the bill of "
+        "materials with what is made and what is a catalogue part, how many calculations "
+        "pricing it uses and how many the plan has left after. Free, and starts nothing. "
+        "Call it before upload_and_quote on an assembly or when calculations are scarce."
+    )
+    args_schema: type[BaseModel] = PrecheckPartInput
+
+    wait_timeout: float = 30.0
+    """Seconds to wait for the answer. A large assembly can take longer; the
+    answer then says it is still being read."""
+    poll_interval: float = 2.0
+    """Seconds between status checks while waiting."""
+    root_dir: str | None = None
+    """When set, file paths are read relative to this directory and may not leave it."""
+
+    def _run(
+        self,
+        file_path: str,
+        part_number: str | None = None,
+        drawing_path: str | None = None,
+        run_manager: CallbackManagerForToolRun | None = None,
+    ) -> str:
+        def call(client: ArcnmClient) -> dict[str, Any]:
+            cad = _resolve(file_path, self.root_dir)
+            drawing = _resolve(drawing_path, self.root_dir) if drawing_path else None
+            wait_s = int(min(5.0, max(0.0, self.wait_timeout)))
+            precheck = client.create_precheck(
+                cad, part_number=part_number, drawing_path=drawing, wait_s=wait_s
+            )
+            precheck = client.wait_for_precheck(
+                precheck,
+                timeout=max(0.0, self.wait_timeout - wait_s),
+                poll_interval=self.poll_interval,
+            )
+            return _precheck(precheck)
 
         return self._call(call)
 
@@ -341,7 +479,9 @@ class GetCostSheetTool(ArcnmBaseTool):
         quantity: int | None = None,
         run_manager: CallbackManagerForToolRun | None = None,
     ) -> str:
-        return self._call(lambda client: client.get_cost_sheet(calculation_id, quantity=quantity))
+        return self._call(
+            lambda client: _cost_sheet(client.get_cost_sheet(calculation_id, quantity=quantity))
+        )
 
 
 # -- cancel_calculation -------------------------------------------------------

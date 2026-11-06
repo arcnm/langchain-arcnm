@@ -1,7 +1,7 @@
 """LangChain's standard integration tests, against the live ARCNM API.
 
-Needs ARCNM_API_KEY. The read-only tools run by default and use no
-calculations. BILLABLE=1 also quotes shaft_thread.step, which uses one.
+Needs ARCNM_API_KEY. These use no calculations; the precheck stores
+shaft_thread.step until it expires. BILLABLE=1 also quotes it, which uses one.
 """
 
 from __future__ import annotations
@@ -22,6 +22,7 @@ from langchain_arcnm import (
     ListCalculationsTool,
     ListEnvironmentsTool,
     ListPartsTool,
+    PrecheckPartTool,
     UploadAndQuoteTool,
 )
 
@@ -73,6 +74,33 @@ def test_quota_reports_remaining() -> None:
     assert "remaining" in quota
 
 
+def test_cost_sheet_of_a_past_calculation() -> None:
+    listed = json.loads(
+        ListCalculationsTool(handle_tool_error=False).invoke({"status": "succeeded", "limit": 1})
+    )
+    if not listed["items"]:
+        pytest.skip("no succeeded calculation to read")
+    sheet = json.loads(
+        GetCostSheetTool(handle_tool_error=False).invoke(
+            {"calculation_id": listed["items"][0]["id"], "quantity": 25}
+        )
+    )
+    assert sheet["point"]["quantity"] == 25
+    assert sheet["lines"] and all("bucket" in line for line in sheet["lines"])
+    assert "label_id" not in json.dumps(sheet)
+
+
+def test_precheck_a_single_part() -> None:
+    answer = json.loads(
+        PrecheckPartTool(handle_tool_error=False).invoke(
+            {"file_path": str(PART), "part_number": "LANGCHAIN-SHAFT-THREAD"}
+        )
+    )
+    assert answer["status"] == "ready", answer
+    assert answer["kind"] == "part", answer
+    assert answer["quota"] is not None
+
+
 @pytest.mark.billable
 @pytest.mark.skipif(not os.environ.get("BILLABLE"), reason="set BILLABLE=1 to use a calculation")
 def test_quote_a_part_end_to_end() -> None:
@@ -94,4 +122,5 @@ def test_quote_a_part_end_to_end() -> None:
             {"calculation_id": started["id"], "quantity": 500}
         )
     )
-    assert "cost_sheet" in sheet
+    assert sheet["point"]["quantity"] == 500
+    assert sheet["lines"] and all("amount" in line for line in sheet["lines"])
